@@ -4,6 +4,9 @@
 #include <inttypes.h>
 #include "atm90e36aaurRegisterAddress.h"
 
+#define CALIBRATION_VOLTAGE 232.0
+#define CALIBRATION_CURRENT 0.177
+
 //Global variables that needs to be accessed outside the modules scope
 
 struct atm90e36aaurPmean
