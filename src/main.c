@@ -1,43 +1,45 @@
-/*
- * Copyright (c) 2016 Intel Corporation
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
+#include <stdio.h>
+#include "atm90e36aaurReadAndWrite.h"
 
-/* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS   1000
+char receiveBuffer[4];
 
-/* The devicetree node identifier for the "led0" alias. */
-#define LED0_NODE DT_ALIAS(led0)
-
-/*
- * A build error on this line means your board is unsupported.
- * See the sample documentation for information on how to fix this.
- */
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+struct atm90e36aaurURms uRmsFromAtm;
+struct atm90e36aaurIRms iRmsFromAtm; 
+struct atm90e36aaurPFmean pFMeanFromAtm;
+struct atm90e36aaurPmean pMeanFromAtm;
 
 int main(void)
 {
-	int ret;
+	uint16_t calculatedValueBuffer;
+	float calculatedValue;
 
-	if (!gpio_is_ready_dt(&led)) {
-		return 0;
-	}
+	printf("Main started\n");
+	
+	atm90e36aaurInit();
+	atm90e36aaurCalibration();
 
-	ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-	if (ret < 0) {
-		return 0;
-	}
+	while(1)
+	{
+		atm90e36aaurGetURms(&uRmsFromAtm);
+		atm90e36aaurGetIRms(&iRmsFromAtm);
+		atm90e36aaurGetPMean(&pMeanFromAtm);
+		atm90e36aaurGetPFMean(&pFMeanFromAtm);
+		
+		printf("U RMS:\t\tPhase A:%.2f B:%.2f C:%.2f\n",
+		uRmsFromAtm.uRmsA,uRmsFromAtm.uRmsB,uRmsFromAtm.uRmsC);
 
-	while (1) {
-		ret = gpio_pin_toggle_dt(&led);
-		if (ret < 0) {
-			return 0;
-		}
-		k_msleep(SLEEP_TIME_MS);
+		printf("i RMS:\t\tPhase N:%.2f Phase A:%.2f B:%.2f C:%.2f\n",
+		iRmsFromAtm.iRmsN,iRmsFromAtm.iRmsA,iRmsFromAtm.iRmsB,iRmsFromAtm.iRmsC);
+
+		printf("P Mean:\t\tPower total:%.2f Power phase A:%.2f Power phase B:%.2f Power phase C:%.2f\n",
+		pMeanFromAtm.pMeanT,pMeanFromAtm.pMeanA,pMeanFromAtm.pMeanB,pMeanFromAtm.pMeanC);
+
+		printf("PF Mean:\tPower factor total:%.2f Power factor phase A:%.2f Power factor phase B:%.2f Power factor phase C:%.2f\n",
+		pFMeanFromAtm.pfMeanT,pFMeanFromAtm.pfMeanA,pFMeanFromAtm.pfMeanB,pFMeanFromAtm.pfMeanC);
+
+		k_sleep(K_MSEC(1000));
 	}
 	return 0;
 }

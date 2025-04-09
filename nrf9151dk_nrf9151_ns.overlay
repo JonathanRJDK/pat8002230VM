@@ -1,0 +1,80 @@
+
+/ {
+	leds{
+		compatible ="gpio-leds";
+		led1:led_1 {
+			gpios = <&gpio0 23 GPIO_ACTIVE_HIGH>;
+			label = "PMRESET";
+		};
+	};
+};
+
+&pinctrl {
+	spi_master_default: spi_master_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 21)>,
+					<NRF_PSEL(SPIM_MOSI, 0, 20)>,
+					<NRF_PSEL(SPIM_MISO, 0, 24)>;
+					nordic,drive-mode = <NRF_DRIVE_H0H1>;
+		};
+	};
+
+	spi_master_sleep: spi_master_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 21)>,
+					<NRF_PSEL(SPIM_MOSI, 0, 20)>,
+					<NRF_PSEL(SPIM_MISO, 0, 24)>;
+					nordic,drive-mode = <NRF_DRIVE_H0H1>;	
+			low-power-enable;
+		};
+	};
+};
+
+spi_a121: &spi1 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	pinctrl-0 = <&spi_master_default>;
+	pinctrl-1 = <&spi_master_sleep>;
+	pinctrl-names = "default", "sleep";
+	cs-gpios = <&gpio0 22 GPIO_ACTIVE_LOW>;
+	reg_spi_a121: spi-dev-a@0 {
+		reg = <0>;
+	};
+};
+
+// Disable UART1, because it is used by default in TF-M
+&uart1 {
+	status = "disabled";
+};
+
+&button0 {
+	status = "disabled";
+};
+
+&button1 {
+	status = "disabled";
+};
+
+&button2 {
+	status = "disabled";
+};
+
+&button3 {
+	status = "disabled";
+};
+
+&led0 {
+	status = "disabled";
+};
+
+&led2 {
+	status = "disabled";
+};
+
+&led3 {
+	status = "disabled";
+};
+
+&spi3 {
+	status = "disabled";
+};
