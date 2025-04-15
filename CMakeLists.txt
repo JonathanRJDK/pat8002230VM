@@ -6,3 +6,4 @@ project(pat8002230VM)
 
 target_sources(app PRIVATE src/main.c)
 target_sources(app PRIVATE src/atm90e36aaurReadAndWrite.c)
+target_sources(app PRIVATE src/powerMeterFiltering.c)

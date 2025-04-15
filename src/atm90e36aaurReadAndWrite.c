@@ -32,13 +32,8 @@ static struct spi_config spi_cfg =
 	.operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB | SPI_OP_MODE_MASTER,
 	.frequency = 125000, //This can at the most, in the case of the ATM90E36AAUR, be 150kHz according to datasheet
 	.slave = 0,
-	.cs = {.gpio = MY_SPI_MASTER_CS_DT_SPEC, .delay = 0}, //Datasheet recommends 2 ns, but 1 us is the lowest available value
+	.cs = {.gpio = MY_SPI_MASTER_CS_DT_SPEC, .delay = 0},
 };
-
-//Internal module functions
-
-
-//Global functions
 
 int atm90e36aaurInit()
 {
@@ -100,17 +95,12 @@ int atm90e36aaurInit()
     return 0;
 }
 
-int atm90e36aaurStart()
-{
-    return 0;
-}
 
 //Takes an address to read from as parameter and then returns the value read
 //Do note that the reason the tx buffer uses a array with 4 index declared is due to both a quirk in the SPI Zephyr api
 //And the fact that after the 2 byte address does the ATM need 16 additional clock periods to be able to return the data
 int atm90e36aaurReadFromAddress(uint16_t registerAddress, char* dataFromAtm)
 {
-    //static uint8_t rxBuffer[2];
     static uint8_t txBuffer[4];
 
     const struct spi_buf tx_buf = 
@@ -136,7 +126,7 @@ int atm90e36aaurReadFromAddress(uint16_t registerAddress, char* dataFromAtm)
     };
 
     txBuffer[0]=(uint8_t)((registerAddress & 0xFF00) >> 8);
-    //printf("txBuffer0:%d\n",txBuffer[0]);
+
     //Set the msb to 1 to indicate a read sequence
     txBuffer[0] |= 1 << 7;
 
@@ -144,9 +134,6 @@ int atm90e36aaurReadFromAddress(uint16_t registerAddress, char* dataFromAtm)
     txBuffer[2]=0x00;
     txBuffer[3]=0x00;
     
-
-    //printf("txBuffer1:%d\n",txBuffer[1]);
-
     int err;
     err = spi_transceive(spi_dev,&spi_cfg,&tx, &rx);
     if(err != 0)
@@ -154,19 +141,8 @@ int atm90e36aaurReadFromAddress(uint16_t registerAddress, char* dataFromAtm)
         LOG_ERR("Error occured in transceive function!");
         return -1;
     }
-    
-    //printf("Sent:");
-    //printf("%x:%x:%x:%x",txBuffer[0],txBuffer[1],txBuffer[2],txBuffer[3]);
-    //printf("%x",txBuffer[0]*256+txBuffer[1]);
-    //printf("\n");
-
-    //printf("Received:");
-    //printf("%x:%x:%x:%x",dataFromAtm[0],dataFromAtm[1],dataFromAtm[2],dataFromAtm[3]);
-    //printf("%x",dataFromAtm[0]*256+dataFromAtm[1]);
-    //printf("\n");
-    //printf("\n");
-    
-   k_sleep(K_MSEC(10));
+        
+   k_sleep(K_MSEC(1));
 
     return 0;
 }
@@ -204,13 +180,11 @@ int atm90e36aaurWriteToAddress(uint16_t registerAddress, uint16_t data)
         LOG_ERR("Error occurred in write function!");
         return -1;
     }
-    k_sleep(K_MSEC(10));
+    k_sleep(K_MSEC(1));
     return 0;
 }
 
-
 #define DEBUG_OFFSET_VAL 0xFFFF
-
 
 void calibrateGain(uint16_t measureAddress, uint16_t measureAddressLsb, uint16_t gainAddress, double reference, uint16_t intFactor, double decimalFactor)
 {
@@ -222,17 +196,6 @@ void calibrateGain(uint16_t measureAddress, uint16_t measureAddressLsb, uint16_t
     uint16_t measuredLsbHex;
     uint16_t gainHex;    
     uint16_t returnVal;
-/*
-    atm90e36aaurReadFromAddress(measureAddress,dataFromAtmBuffer);
-    measuredHex = (uint16_t) ((uint16_t) dataFromAtmBuffer[2] << 8) | (uint16_t) dataFromAtmBuffer[3];
-    //printf("URmsA:%x\n",measuredHex);
-
-    atm90e36aaurReadFromAddress(measureAddressLsb, dataFromAtmBuffer);
-    measuredLsbHex = dataFromAtmBuffer[2]; //We're only interested in the higher bits
-    //printf("UrmsALSB:%x\n",measuredLsbHex);
-
-    measuredValueDouble = ((double) measuredHex * decimalFactor) + (measuredLsbHex * decimalFactor / 256);
-*/
 
     // Take 10 measurements and calculate the average
     for (int i = 0; i < 10; i++)
@@ -245,15 +208,13 @@ void calibrateGain(uint16_t measureAddress, uint16_t measureAddressLsb, uint16_t
 
         measuredValueDouble = ((double)measuredHex * decimalFactor) + (measuredLsbHex * decimalFactor / 256);
         totalMeasuredValue += measuredValueDouble;
-        k_sleep(K_MSEC(100));
+        k_sleep(K_MSEC(10));
     }
 
     double averageMeasuredValue = totalMeasuredValue / 10;
 
-    //printf("Measured voltage:%.2f\n",measuredValueDouble);
-    gainHex = (reference/measuredValueDouble) * intFactor;
+    gainHex = (reference/averageMeasuredValue) * intFactor;
 
-    //printf("Gain:%.4x\n",gainHex);
     atm90e36aaurWriteToAddress(gainAddress, gainHex);
 
     //Debug read from atm to ensure correct value was written
@@ -279,7 +240,7 @@ void calibrateOffsetVoltOrCurrent(uint16_t measureAddress, uint16_t offsetAddres
     uint16_t returnVal;
     double totalMeasuredValue = 0;
 
-    // Take 10 measurements and calculate the average
+    //Take 10 measurements and calculate the average
     for (int i = 0; i < 10; i++)
     {
         atm90e36aaurReadFromAddress(measureAddress, dataFromAtmBuffer);
@@ -290,12 +251,12 @@ void calibrateOffsetVoltOrCurrent(uint16_t measureAddress, uint16_t offsetAddres
 
     uint16_t averageMeasuredHex = (uint16_t)(totalMeasuredValue / 10);
 
-    // Calculate two's complement of the average value
+    //Calculate two's complement of the average value
     measured2ComplementHex = ~averageMeasuredHex + 1;
 
     atm90e36aaurWriteToAddress(offsetAddress, measured2ComplementHex);
 
-    // Debug read from ATM to ensure correct value was written
+    //Debug read from ATM to ensure correct value was written
     atm90e36aaurReadFromAddress(offsetAddress, dataFromAtmBuffer);
 
     returnVal = (uint16_t)((uint16_t)dataFromAtmBuffer[2] << 8) | (uint16_t)dataFromAtmBuffer[3];
@@ -309,42 +270,6 @@ void calibrateOffsetVoltOrCurrent(uint16_t measureAddress, uint16_t offsetAddres
         LOG_INF("Offset value from ATM90E36 value:%x:%x", dataFromAtmBuffer[2], dataFromAtmBuffer[3]);
     }
 }
-
-/*
-void calibrateOffsetVoltOrCurrent(uint16_t measureAddress, uint16_t offsetAddress)
-{
-    char dataFromAtmBuffer[4];
-
-    uint16_t measuredHex;
-    uint16_t measured2ComplementHex;
-
-    uint16_t returnVal;
-
-    atm90e36aaurReadFromAddress(measureAddress,dataFromAtmBuffer);
-
-    measuredHex = (uint16_t) ((uint16_t) dataFromAtmBuffer[2] << 8) | (uint16_t) dataFromAtmBuffer[3];
-    //printf("measuredHex:%x\n",measuredHex);
-
-    measured2ComplementHex = ~measuredHex + 1;
-    //printf("measured2ComplementHex:%x\n",measured2ComplementHex);
-
-    atm90e36aaurWriteToAddress(offsetAddress, measured2ComplementHex);
-
-    //Debug read from atm to ensure correct value was written
-    atm90e36aaurReadFromAddress(offsetAddress,dataFromAtmBuffer);
-
-    returnVal = (uint16_t) ((uint16_t) dataFromAtmBuffer[2] << 8) | (uint16_t) dataFromAtmBuffer[3];
-    if(returnVal != measured2ComplementHex)
-    {
-        LOG_ERR("Offset value read from register does not match the entered value!");
-        LOG_ERR("Expected:%x, Got:%x",measured2ComplementHex,returnVal);
-    }
-    else
-    {
-        LOG_INF("Offset value from ATM90E36 value:%x:%x",dataFromAtmBuffer[2],dataFromAtmBuffer[3]);
-    }
-}
-*/
 
 void calibrateOffsetPower(uint16_t measureAddress, uint16_t offsetAddress)
 {
@@ -360,7 +285,6 @@ void calibrateOffsetPower(uint16_t measureAddress, uint16_t offsetAddress)
     measuredHex = (uint16_t) ((uint16_t) dataFromAtmBuffer[2] << 8) | (uint16_t) dataFromAtmBuffer[3];
 
     measured2ComplementHex = ~measuredHex + 1;
-    //printf("measured2ComplementHex:%x\n",measured2ComplementHex);
 
     atm90e36aaurWriteToAddress(offsetAddress, measured2ComplementHex);
 
@@ -380,7 +304,10 @@ void calibrateOffsetPower(uint16_t measureAddress, uint16_t offsetAddress)
 }
 
 //Calibrates the ATM, which must be done before normal use
-int atm90e36aaurCalibration()
+//The useInternalCalibrationValues parameter is used to determine if the internal calibration values should be used or not
+//If not used will it require the user to connected a reference voltage, current, power and pf to the ATM90E36A
+//If used will the ATM90E36A use the internal calibration values, which are pre calibrated at the factory
+int atm90e36aaurCalibration(bool useInternalCalibrationValues)
 {
     char dataFromAtmBuffer[4];
 
@@ -438,82 +365,79 @@ int atm90e36aaurCalibration()
     //Set measurement calibration values (ADJUST)
     atm90e36aaurWriteToAddress(AdjStart, 0x5678);    // Measurement calibration
 
-    LOG_INF("Calibrating UgainA");
-    calibrateGain(UrmsA, UrmsALSB, UgainA, CALIBRATION_VOLTAGE, 52800, 0.01);
-
-    LOG_INF("Calibrating UoffsetA");
-    calibrateOffsetVoltOrCurrent(UrmsA, UoffsetA);
-
-    LOG_INF("Calibrating IgainA");
-    calibrateGain(IrmsA, IrmsALSB, IgainA, CALIBRATION_CURRENT, 30000, 0.001);
-
-    LOG_INF("Calibrating IoffsetA");
-    calibrateOffsetVoltOrCurrent(IrmsA, IoffsetA);
-
-
-    LOG_INF("Calibrating UgainB");
-    calibrateGain(UrmsB, UrmsBLSB, UgainB, CALIBRATION_VOLTAGE, 52800, 0.01);
     
-    LOG_INF("Calibrating UoffsetB");
-    calibrateOffsetVoltOrCurrent(UrmsB, UoffsetB);
+    if(useInternalCalibrationValues == true)
+    {
+       //Use internal calibration values
+       LOG_INF("Using internal calibration values");
+       atm90e36aaurWriteToAddress(UgainA, CALIBRATION_VOLTAGE_GAIN_FACTORY);           // Line calibration gain
+       atm90e36aaurWriteToAddress(UoffsetA, CALIBRATION_VOLTAGE_OFFSET_FACTORY);       // Line calibration offset
+       atm90e36aaurWriteToAddress(IgainA, CALIBRATION_CURRENT_GAIN_FACTORY);           // Line calibration gain
+       atm90e36aaurWriteToAddress(IoffsetA, CALIBRATION_CURRENT_OFFSET_FACTORY);       // Line calibration offset
 
-    LOG_INF("Calibrating IgainB");
-    calibrateGain(IrmsB, IrmsBLSB, IgainB, CALIBRATION_CURRENT, 30000, 0.001);
+       atm90e36aaurWriteToAddress(UgainB, CALIBRATION_VOLTAGE_GAIN_FACTORY);           // Line calibration gain
+       atm90e36aaurWriteToAddress(UoffsetB, CALIBRATION_VOLTAGE_OFFSET_FACTORY);       // Line calibration offset
+       atm90e36aaurWriteToAddress(IgainB, CALIBRATION_CURRENT_GAIN_FACTORY);           // Line calibration gain
+       atm90e36aaurWriteToAddress(IoffsetB, CALIBRATION_CURRENT_OFFSET_FACTORY);       // Line calibration offset
 
-    LOG_INF("Calibrating IoffsetB");
-    calibrateOffsetVoltOrCurrent(IrmsB, IoffsetB);
+       atm90e36aaurWriteToAddress(UgainC, CALIBRATION_VOLTAGE_GAIN_FACTORY);           // Line calibration gain
+       atm90e36aaurWriteToAddress(UoffsetC, CALIBRATION_VOLTAGE_OFFSET_FACTORY);       // Line calibration offset
+       atm90e36aaurWriteToAddress(IgainC, CALIBRATION_CURRENT_GAIN_FACTORY);           // Line calibration gain
+       atm90e36aaurWriteToAddress(IoffsetC, CALIBRATION_CURRENT_OFFSET_FACTORY);       // Line calibration offset
+
+       atm90e36aaurWriteToAddress(IgainN, CALIBRATION_CURRENT_OFFSET_FACTORY_N);       // Line calibration gain
+    }
+    else
+    {
+        //Use external calibration values
+        LOG_INF("Using external calibration values");
+        LOG_INF("Calibrating UgainA");
+        calibrateGain(UrmsA, UrmsALSB, UgainA, CALIBRATION_VOLTAGE, 52800, 0.01);
+
+        LOG_INF("Calibrating UoffsetA");
+        calibrateOffsetVoltOrCurrent(UrmsA, UoffsetA);
+
+        LOG_INF("Calibrating IgainA");
+        calibrateGain(IrmsA, IrmsALSB, IgainA, CALIBRATION_CURRENT, 30000, 0.001);
+
+        LOG_INF("Calibrating IoffsetA");
+        calibrateOffsetVoltOrCurrent(IrmsA, IoffsetA);
 
 
-    LOG_INF("Calibrating UgainC");
-    calibrateGain(UrmsC, UrmsCLSB, UgainC, CALIBRATION_VOLTAGE, 52800, 0.01);
+        LOG_INF("Calibrating UgainB");
+        calibrateGain(UrmsB, UrmsBLSB, UgainB, CALIBRATION_VOLTAGE, 52800, 0.01);
+        
+        LOG_INF("Calibrating UoffsetB");
+        calibrateOffsetVoltOrCurrent(UrmsB, UoffsetB);
 
-    LOG_INF("Calibrating UoffsetC");
-    calibrateOffsetVoltOrCurrent(UrmsC, UoffsetC);
+        LOG_INF("Calibrating IgainB");
+        calibrateGain(IrmsB, IrmsBLSB, IgainB, CALIBRATION_CURRENT, 30000, 0.001);
 
-    LOG_INF("Calibrating IgainC");
-    calibrateGain(IrmsC, IrmsCLSB, IgainC, CALIBRATION_CURRENT, 30000, 0.001);
-
-    LOG_INF("Calibrating IoffsetC");
-    calibrateOffsetVoltOrCurrent(IrmsC, IoffsetC);
+        LOG_INF("Calibrating IoffsetB");
+        calibrateOffsetVoltOrCurrent(IrmsB, IoffsetB);
 
 
-    LOG_INF("Calibrating IgainN");
-    calibrateGain(IrmsN1, IrmsN0, IgainN, CALIBRATION_CURRENT, 30000, 0.001);
+        LOG_INF("Calibrating UgainC");
+        calibrateGain(UrmsC, UrmsCLSB, UgainC, CALIBRATION_VOLTAGE, 52800, 0.01);
+
+        LOG_INF("Calibrating UoffsetC");
+        calibrateOffsetVoltOrCurrent(UrmsC, UoffsetC);
+
+        LOG_INF("Calibrating IgainC");
+        calibrateGain(IrmsC, IrmsCLSB, IgainC, CALIBRATION_CURRENT, 30000, 0.001);
+
+        LOG_INF("Calibrating IoffsetC");
+        calibrateOffsetVoltOrCurrent(IrmsC, IoffsetC);
+
+
+        LOG_INF("Calibrating IgainN");
+        calibrateGain(IrmsN1, IrmsN0, IgainN, CALIBRATION_CURRENT, 30000, 0.001);
+    }
+    
 
     atm90e36aaurWriteToAddress(CSThree, 0x0000);     // Checksum 3
     atm90e36aaurReadFromAddress(SysStatus0,dataFromAtmBuffer);
     LOG_INF("SysStatus0:%x:%x",dataFromAtmBuffer[2],dataFromAtmBuffer[3]);
-
-/*
-    LOG_INF("Calibrating PoffsetA");
-    calibrateOffsetVoltOrCurrent(PmeanA,PoffsetA);
-
-    LOG_INF("Calibrating QoffsetA");
-    calibrateOffsetVoltOrCurrent(QmeanA,QoffsetA);
-
-    LOG_INF("Calibrating POffsetAF");
-    calibrateOffsetVoltOrCurrent(PmeanAF,POffsetAF);
-
-
-    LOG_INF("Calibrating PoffsetB");
-    calibrateOffsetVoltOrCurrent(PmeanB,PoffsetB);
-
-    LOG_INF("Calibrating QoffsetB");
-    calibrateOffsetVoltOrCurrent(QmeanB,QoffsetB);
-
-    LOG_INF("Calibrating POffsetBF");
-    calibrateOffsetVoltOrCurrent(PmeanBF,POffsetBF);
-
-
-    LOG_INF("Calibrating PoffsetC");
-    calibrateOffsetVoltOrCurrent(PmeanC,PoffsetC);
-
-    LOG_INF("Calibrating QoffsetC");
-    calibrateOffsetVoltOrCurrent(QmeanC,QoffsetC);
-
-    LOG_INF("Calibrating POffsetCF");
-    calibrateOffsetVoltOrCurrent(PmeanCF,POffsetCF);
-*/
 
     // Done with the configuration
     atm90e36aaurWriteToAddress(ConfigStart, 0x8765);
@@ -521,6 +445,7 @@ int atm90e36aaurCalibration()
     atm90e36aaurWriteToAddress(HarmStart, 0x8765);   // 0x6886 //0x5678 //8765);    
     atm90e36aaurWriteToAddress(AdjStart, 0x8765);    // 0x6886 //0x5678 //8765);  
 
+    k_sleep(K_MSEC(1000));
     return 0; 
 }
 
@@ -532,11 +457,11 @@ Complement, MSB as the sign bit XX.XXX kW
 */
 float convertPmeanToFloat(char* inputData)
 {
-    uint16_t calculatedValueBuffer;
+    int16_t calculatedValueBuffer;
 	float calculatedValue;
 
     calculatedValueBuffer = (inputData[2]*256+inputData[3]);
-    printf("%d:%d:%d:%d\n",inputData[0], inputData[1], inputData[2], inputData[3]);
+    //printf("%d:%d:%d:%d\n",inputData[0], inputData[1], inputData[2], inputData[3]);
 
     if(calculatedValueBuffer & 0x8000)
     {
@@ -557,19 +482,18 @@ LSB is 0.001. Range from -1000 to +1000
 */
 float convertPFmeanToFloat(char* inputData)
 {
-    uint16_t calculatedValueBuffer;
+    int16_t calculatedValueBuffer;
 	float calculatedValue;
 
     calculatedValueBuffer = (inputData[2]*256+inputData[3]);
-    //printf("%d:%d:%d:%d\n",inputData[0], inputData[1], inputData[2], inputData[3]);
 
     if(calculatedValueBuffer & 0x8000)
     {
         calculatedValueBuffer = (calculatedValueBuffer & 0x7FFF) * -1;
+        
     }
 
-    calculatedValue = calculatedValueBuffer/1000;
-    //printf("calculatedValue:%.8f\n",calculatedValue);
+    calculatedValue = (float)calculatedValueBuffer / 1000.0;
 
     return calculatedValue;
 }
@@ -578,13 +502,13 @@ float convertPFmeanToFloat(char* inputData)
 From datasheet:
 1LSB corresponds to 0.01 V
 */
-float convertURmsToFloat(char* inputData)
+float convertURmsToFloat(float inputData)
 {
-    float calculatedValueBuffer;
+    //float calculatedValueBuffer;
 	float calculatedValue;
 
-    calculatedValueBuffer = (inputData[2]*256+inputData[3]);
-	calculatedValue = calculatedValueBuffer/100;
+    //calculatedValueBuffer = (inputData[2]*256+inputData[3]);
+	calculatedValue = inputData/100;
 
     return calculatedValue;
 }
@@ -594,103 +518,93 @@ From datasheet:
 unsigned 16-bit integer with unit of 0.001A
 1LSB corresponds to 0.001 A 
 */
-float convertIRmsToFloat(char* inputData)
+float convertIRmsToFloat(float inputData)
 {
-    float calculatedValueBuffer;
+    //float calculatedValueBuffer;
 	float calculatedValue;
 
-    calculatedValueBuffer = (inputData[2]*256+inputData[3]);
-	calculatedValue = calculatedValueBuffer/1000;
+    //calculatedValueBuffer = (inputData[2]*256+inputData[3]);
+	calculatedValue = inputData/1000;
 
     return calculatedValue;
 }
 
-int atm90e36aaurGetPMean(struct atm90e36aaurPmean* pMeanFromAtm)
-{
-    char dataFromAtmBuffer[4]; //There should be no need to clear this between uses, since the chip always should give back 16 bits over SPI. Meaning it will be overwritten
-
-    //First get the data from the chip, then convert it to a float value, then populate the atm90e36aaurPmean struct with the data
-    //The following code could be made using loops, however this, to approach makes it more readable...
-    //The above comments are also applicable to the functions to read the other values
-
-    //Mean total power
-    atm90e36aaurReadFromAddress(PmeanTF,dataFromAtmBuffer);
-    pMeanFromAtm->pMeanT = convertPmeanToFloat(dataFromAtmBuffer);
-
-    //Mean power through phase A
-    atm90e36aaurReadFromAddress(PmeanAF,dataFromAtmBuffer);
-    pMeanFromAtm->pMeanA = convertPmeanToFloat(dataFromAtmBuffer);
-
-    //Mean power through phase B
-    atm90e36aaurReadFromAddress(PmeanBF,dataFromAtmBuffer);
-    pMeanFromAtm->pMeanB = convertPmeanToFloat(dataFromAtmBuffer);
-
-    //Mean power through phase C
-    atm90e36aaurReadFromAddress(PmeanCF,dataFromAtmBuffer);
-    pMeanFromAtm->pMeanC = convertPmeanToFloat(dataFromAtmBuffer);
-
-    return 0;
-}
-
-int atm90e36aaurGetPFMean(struct atm90e36aaurPFmean* pFMeanFromAtm)
+float atm90e36aaurGetURms(int uRmsAddress)
 {
     char dataFromAtmBuffer[4];
+    uint16_t measuredHex;
+    uint16_t measured2ComplementHex;
+    uint16_t returnVal;
+    double totalMeasuredValue = 0;
 
-    //Mean total power factor 
-    atm90e36aaurReadFromAddress(PFmeanT,dataFromAtmBuffer);
-    pFMeanFromAtm->pfMeanT = convertPFmeanToFloat(dataFromAtmBuffer);
+    //Take 10 measurements and calculate the average
+    for (int i = 0; i < 10; i++)
+    {
+        atm90e36aaurReadFromAddress(uRmsAddress, dataFromAtmBuffer);
 
-    //Mean power factor on phase A
-    atm90e36aaurReadFromAddress(PFmeanA,dataFromAtmBuffer);
-    pFMeanFromAtm->pfMeanA = convertPFmeanToFloat(dataFromAtmBuffer);
+        measuredHex = (uint16_t)((uint16_t)dataFromAtmBuffer[2] << 8) | (uint16_t)dataFromAtmBuffer[3];
+        totalMeasuredValue += measuredHex;
+    }
 
-    //Mean power factor on phase B
-    atm90e36aaurReadFromAddress(PFmeanB,dataFromAtmBuffer);
-    pFMeanFromAtm->pfMeanB = convertPFmeanToFloat(dataFromAtmBuffer);
-
-    //Mean power factor on phase C
-    atm90e36aaurReadFromAddress(PFmeanC,dataFromAtmBuffer);
-    pFMeanFromAtm->pfMeanC = convertPFmeanToFloat(dataFromAtmBuffer);
-
-    return 0;
+    double averageMeasuredValue = totalMeasuredValue / 10;
+    
+    return(convertURmsToFloat(averageMeasuredValue));
 }
 
-int atm90e36aaurGetURms(struct atm90e36aaurURms* uRmsFromAtm)
+//Functions for getting different values from the ATM90E36A
+//These functions will read the data from the ATM90E36A, convert it to a float and return it
+//The functions will take the address of the register to read from as a parameter
+float atm90e36aaurGetIRms(int iRmsAddress)
 {
     char dataFromAtmBuffer[4];
+    uint16_t measuredHex;
+    uint16_t measured2ComplementHex;
+    uint16_t returnVal;
+    double totalMeasuredValue = 0;
 
-    //Mean total power factor 
-    atm90e36aaurReadFromAddress(UrmsA,dataFromAtmBuffer);
-    uRmsFromAtm->uRmsA = convertURmsToFloat(dataFromAtmBuffer);
-    //printf("A: FLOAT IN STRUCT:%.2f\n",uRmsFromAtm->uRmsA);
+    //Take 10 measurements and calculate the average
+    for (int i = 0; i < 10; i++)
+    {
+        atm90e36aaurReadFromAddress(iRmsAddress, dataFromAtmBuffer);
 
-    atm90e36aaurReadFromAddress(UrmsB,dataFromAtmBuffer);
-    uRmsFromAtm->uRmsB = convertURmsToFloat(dataFromAtmBuffer);
-    //printf("B: FLOAT IN STRUCT:%.2f\n",uRmsFromAtm->uRmsB);
+        measuredHex = (uint16_t)((uint16_t)dataFromAtmBuffer[2] << 8) | (uint16_t)dataFromAtmBuffer[3];
+        totalMeasuredValue += measuredHex;
+    }
 
-    atm90e36aaurReadFromAddress(UrmsC,dataFromAtmBuffer);
-    uRmsFromAtm->uRmsC = convertURmsToFloat(dataFromAtmBuffer);
-    //printf("C: FLOAT IN STRUCT:%.2f\n",uRmsFromAtm->uRmsC);
-
-    return 0;
+    double averageMeasuredValue = totalMeasuredValue / 10;
+    
+    return(convertIRmsToFloat(averageMeasuredValue));
 }
 
-int atm90e36aaurGetIRms(struct atm90e36aaurIRms* iRmsFromAtm)
+float atm90e36aaurGetPMean(int pMeanAddress)
 {
     char dataFromAtmBuffer[4];
+    double totalMeasuredValue = 0;
 
-    //Mean total power factor 
-    atm90e36aaurReadFromAddress(IrmsN0,dataFromAtmBuffer);
-    iRmsFromAtm->iRmsN = convertIRmsToFloat(dataFromAtmBuffer);
+    for(int i = 0; i < 10; i++)
+    {
+        atm90e36aaurReadFromAddress(pMeanAddress,dataFromAtmBuffer);
+        totalMeasuredValue += convertPmeanToFloat(dataFromAtmBuffer);
+    }
 
-    atm90e36aaurReadFromAddress(IrmsA,dataFromAtmBuffer);
-    iRmsFromAtm->iRmsA = convertIRmsToFloat(dataFromAtmBuffer);
+    double averageMeasuredValue = totalMeasuredValue / 10;
 
-    atm90e36aaurReadFromAddress(IrmsB,dataFromAtmBuffer);
-    iRmsFromAtm->iRmsB = convertIRmsToFloat(dataFromAtmBuffer);
+    return averageMeasuredValue;  
+}
 
-    atm90e36aaurReadFromAddress(IrmsC,dataFromAtmBuffer);
-    iRmsFromAtm->iRmsC = convertIRmsToFloat(dataFromAtmBuffer);
 
-    return 0;
+float atm90e36aaurGetPFMean(int pfMeanAddress)
+{
+    char dataFromAtmBuffer[4];
+    float totalMeasuredValue = 0;
+
+    for(int i = 0; i < 10; i++)
+    {
+        atm90e36aaurReadFromAddress(pfMeanAddress,dataFromAtmBuffer);
+        totalMeasuredValue += convertPFmeanToFloat(dataFromAtmBuffer);
+    }
+
+    double averageMeasuredValue = totalMeasuredValue / 10;
+
+    return averageMeasuredValue;  
 }

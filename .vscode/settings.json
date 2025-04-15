@@ -4,6 +4,8 @@
         "type_traits": "c",
         "stdio.h": "c",
         "string.h": "c",
-        "atm90e36aaurregisteraddress.h": "c"
+        "atm90e36aaurregisteraddress.h": "c",
+        "gpio.h": "c",
+        "inttypes.h": "c"
     }
 }

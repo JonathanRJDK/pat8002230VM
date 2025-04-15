@@ -1,51 +1,43 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <stdio.h>
+
 #include "atm90e36aaurReadAndWrite.h"
+#include "powerMeterFiltering.h"
 
-char receiveBuffer[4];
-
-struct atm90e36aaurURms uRmsFromAtm;
-struct atm90e36aaurIRms iRmsFromAtm; 
-struct atm90e36aaurPFmean pFMeanFromAtm;
-struct atm90e36aaurPmean pMeanFromAtm;
+filterData uRmsA;
+filterData iRmsA;
+filterData pMeanA;
+filterData pfMeanA;
 
 int main(void)
 {
-	uint16_t calculatedValueBuffer;
-	float calculatedValue;
-
-	char dataFromAtmBuffer[4];
-
 	printf("Main started\n");
 	
 	atm90e36aaurInit();
-	atm90e36aaurCalibration();
+	atm90e36aaurCalibration(USE_INTERNAL_CALIBRATION_VALUES);
 
 	while(1)
 	{
-		//ToDo: Split these functions up so that you only fetch one phase at a time
-		//Also add a average filter so that the values are more precise. 		
-		atm90e36aaurGetURms(&uRmsFromAtm);
-		atm90e36aaurGetIRms(&iRmsFromAtm);
-		atm90e36aaurGetPMean(&pMeanFromAtm);
-		atm90e36aaurGetPFMean(&pFMeanFromAtm);
-/*
-		printf("U RMS:\t\tPhase A:%.2fV B:%.2fV C:%.2fV\n",
-		uRmsFromAtm.uRmsA,uRmsFromAtm.uRmsB,uRmsFromAtm.uRmsC);
+		//URms
+		addNewValue(atm90e36aaurGetURms(UrmsA), &uRmsA);
 
-		printf("i RMS:\t\tPhase N:%.4fA Phase A:%.4fA B:%.4fA C:%.4fA\n",
-		iRmsFromAtm.iRmsN,iRmsFromAtm.iRmsA,iRmsFromAtm.iRmsB,iRmsFromAtm.iRmsC);
+		//IRms
+		addNewValue(atm90e36aaurGetIRms(IrmsA), &iRmsA);
 
-		printf("P Mean:\t\tPower total:%.6fW Power phase A:%.6fW Power phase B:%.6fW Power phase C:%.6fW\n",
-		pMeanFromAtm.pMeanT,pMeanFromAtm.pMeanA,pMeanFromAtm.pMeanB,pMeanFromAtm.pMeanC);
+		//PMean
+		addNewValue(atm90e36aaurGetPMean(PmeanA), &pMeanA);
 
-		printf("PF Mean:\tPower factor total:%.2f Power factor phase A:%.2f Power factor phase B:%.2f Power factor phase C:%.2f\n",
-		pFMeanFromAtm.pfMeanT,pFMeanFromAtm.pfMeanA,pFMeanFromAtm.pfMeanB,pFMeanFromAtm.pfMeanC);
-		printf("\n");
-*/
-
-		printf("Phase A:\nUrms - %.2fV\nIrms - %.3fA\nPmean - %.2fW\nPFmean - %.2f\n", uRmsFromAtm.uRmsA,iRmsFromAtm.iRmsA,pMeanFromAtm.pMeanA,pFMeanFromAtm.pfMeanA);
+		//PFMean
+		addNewValue(atm90e36aaurGetPFMean(PFmeanA), &pfMeanA);
+		
+		printf("Urms : %.2fV - Max %.2f - Min %.2f\nIrms : %.3fA - Max %.2f - Min %.2f\nPmean : %.2fW - Max %.2f - Min %.2f\nPFmean : %.2f - Max %.2f - Min %.2f\n", 
+			getAvgValue(&uRmsA), getMaxValue(&uRmsA), getMinValue(&uRmsA),
+			getAvgValue(&iRmsA), getMaxValue(&iRmsA), getMinValue(&iRmsA), 
+			getAvgValue(&pMeanA), getMaxValue(&pMeanA), getMinValue(&pMeanA),
+			getAvgValue(&pfMeanA), getMaxValue(&pfMeanA), getMinValue(&pfMeanA)
+		);
+		
 		printf("\n");
 		k_sleep(K_MSEC(1000));
 	}
